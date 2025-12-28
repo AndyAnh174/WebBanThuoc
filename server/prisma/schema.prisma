@@ -1,0 +1,471 @@
+// =============================================
+// WEBSITE BÁN DƯỢC PHẨM - PRISMA SCHEMA
+// =============================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================
+// ENUMS
+// =============================================
+
+enum UserRole {
+  ADMIN
+  CUSTOMER
+}
+
+enum UserStatus {
+  PENDING   // Chờ duyệt
+  ACTIVE    // Đã duyệt
+  REJECTED  // Từ chối
+  LOCKED    // Khóa tài khoản
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum OrderStatus {
+  PENDING     // Chờ xác nhận
+  CONFIRMED   // Đã xác nhận
+  PROCESSING  // Đang xử lý
+  SHIPPING    // Đang giao
+  COMPLETED   // Hoàn thành
+  CANCELLED   // Đã hủy
+}
+
+enum PaymentMethod {
+  COD       // Thanh toán khi nhận hàng
+  MOMO      // Ví MoMo
+  ZALOPAY   // ZaloPay
+  VNPAY     // VNPay
+  BANKING   // Chuyển khoản ngân hàng
+}
+
+enum PaymentStatus {
+  PENDING   // Chờ thanh toán
+  PAID      // Đã thanh toán
+  FAILED    // Thanh toán thất bại
+  REFUNDED  // Đã hoàn tiền
+}
+
+enum DeliveryMethod {
+  HOME_DELIVERY  // Giao tại nhà
+  STORE_PICKUP   // Nhận tại cửa hàng
+}
+
+enum CouponType {
+  PERCENT       // Giảm theo %
+  FIXED_AMOUNT  // Giảm số tiền cố định
+}
+
+enum ConversationStatus {
+  OPEN
+  CLOSED
+}
+
+enum NewsType {
+  NEWS       // Tin tức
+  EVENT      // Sự kiện
+  PROMOTION  // Khuyến mãi
+}
+
+enum BannerPosition {
+  HOME_HERO
+  HOME_SIDEBAR
+  CATEGORY
+}
+
+enum ContactStatus {
+  NEW
+  READ
+  REPLIED
+}
+
+// =============================================
+// USER MANAGEMENT
+// =============================================
+
+model User {
+  id              String     @id @default(uuid())
+  email           String     @unique
+  phone           String     @unique
+  passwordHash    String     @map("password_hash")
+  fullName        String     @map("full_name")
+  avatarUrl       String?    @map("avatar_url")
+  dateOfBirth     DateTime?  @map("date_of_birth")
+  gender          Gender?
+  role            UserRole   @default(CUSTOMER)
+  status          UserStatus @default(PENDING)
+  licenseFileUrl  String?    @map("license_file_url")    // Giấy phép kinh doanh
+  rejectionReason String?    @map("rejection_reason")    // Lý do từ chối
+  approvedBy      String?    @map("approved_by")         // Admin duyệt
+  approvedAt      DateTime?  @map("approved_at")         // Thời điểm duyệt
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  addresses           Address[]
+  favorites           Favorite[]
+  orders              Order[]
+  sentMessages        Message[]      @relation("SentMessages")
+  customerConversations Conversation[] @relation("CustomerConversations")
+  adminConversations  Conversation[] @relation("AdminConversations")
+  approvedUsers       User[]         @relation("ApprovedByAdmin")
+  approver            User?          @relation("ApprovedByAdmin", fields: [approvedBy], references: [id])
+  news                News[]         @relation("NewsAuthor")
+  auditLogs           AuditLog[]
+
+  @@map("users")
+}
+
+model Address {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  recipientName String   @map("recipient_name")  // Tên người nhận
+  phone         String
+  addressLine   String   @map("address_line")    // Địa chỉ chi tiết
+  province      String                            // Tỉnh/Thành phố
+  district      String                            // Quận/Huyện
+  ward          String                            // Phường/Xã
+  isDefault     Boolean  @default(false) @map("is_default")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@map("addresses")
+}
+
+// =============================================
+// PRODUCT MANAGEMENT
+// =============================================
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String?
+  imageUrl    String?   @map("image_url")
+  sortOrder   Int       @default(0) @map("sort_order")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  products Product[]
+
+  @@map("categories")
+}
+
+model Manufacturer {
+  id          String   @id @default(uuid())
+  name        String                          // KHAPHARCO, TIPHARCO, etc.
+  slug        String   @unique
+  logoUrl     String?  @map("logo_url")
+  description String?
+  website     String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  products Product[]
+
+  @@map("manufacturers")
+}
+
+model Product {
+  id                  String   @id @default(uuid())
+  name                String
+  slug                String   @unique
+  sku                 String?  @unique              // Mã sản phẩm
+  price               Decimal  @db.Decimal(12, 2)   // Giá bán
+  originalPrice       Decimal? @map("original_price") @db.Decimal(12, 2) // Giá gốc (nếu khuyến mãi)
+  stockQuantity       Int      @default(0) @map("stock_quantity")        // Số lượng tồn kho
+  unit                String   @default("hộp")      // Đơn vị: hộp, vỉ, chai...
+  activeIngredient    String?  @map("active_ingredient")                 // Hoạt chất
+  packaging           String?                       // Quy cách đóng gói
+  description         String?  @db.Text             // Mô tả chi tiết
+  usageInstructions   String?  @map("usage_instructions") @db.Text       // Hướng dẫn sử dụng
+  storageInstructions String?  @map("storage_instructions")              // Bảo quản
+  thumbnailUrl        String?  @map("thumbnail_url")                     // Ảnh đại diện
+  isActive            Boolean  @default(true) @map("is_active")
+  isFeatured          Boolean  @default(false) @map("is_featured")       // Sản phẩm nổi bật
+  soldCount           Int      @default(0) @map("sold_count")            // Số lượng đã bán
+  viewCount           Int      @default(0) @map("view_count")            // Lượt xem
+  categoryId          String   @map("category_id")
+  manufacturerId      String   @map("manufacturer_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  category     Category       @relation(fields: [categoryId], references: [id])
+  manufacturer Manufacturer   @relation(fields: [manufacturerId], references: [id])
+  images       ProductImage[]
+  favorites    Favorite[]
+  orderItems   OrderItem[]
+
+  @@index([categoryId])
+  @@index([manufacturerId])
+  @@index([isActive, isFeatured])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  imageUrl  String   @map("image_url")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_images")
+}
+
+model Favorite {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  productId String   @map("product_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@map("favorites")
+}
+
+// =============================================
+// ORDER MANAGEMENT
+// =============================================
+
+model Order {
+  id              String         @id @default(uuid())
+  orderCode       String         @unique @map("order_code")  // Mã đơn hàng: DH202312280001
+  userId          String         @map("user_id")
+  addressId       String?        @map("address_id")          // Địa chỉ giao hàng
+  couponId        String?        @map("coupon_id")           // Mã giảm giá đã dùng
+  subtotal        Decimal        @db.Decimal(12, 2)          // Tổng tiền sản phẩm
+  discountAmount  Decimal        @default(0) @map("discount_amount") @db.Decimal(12, 2)  // Số tiền giảm
+  shippingFee     Decimal        @default(0) @map("shipping_fee") @db.Decimal(12, 2)     // Phí vận chuyển
+  totalAmount     Decimal        @map("total_amount") @db.Decimal(12, 2)                 // Tổng thanh toán
+  deliveryMethod  DeliveryMethod @default(HOME_DELIVERY) @map("delivery_method")
+  recipientName   String         @map("recipient_name")      // Tên người nhận
+  recipientPhone  String         @map("recipient_phone")     // SĐT người nhận
+  shippingAddress String         @map("shipping_address")    // Địa chỉ giao hàng đầy đủ
+  status          OrderStatus    @default(PENDING)
+  paymentMethod   PaymentMethod  @default(COD) @map("payment_method")
+  paymentStatus   PaymentStatus  @default(PENDING) @map("payment_status")
+  paidAt          DateTime?      @map("paid_at")             // Thời điểm thanh toán
+  note            String?        @db.Text                    // Ghi chú đơn hàng
+  cancelReason    String?        @map("cancel_reason")       // Lý do hủy
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  user    User        @relation(fields: [userId], references: [id])
+  address Address?    @relation(fields: [addressId], references: [id])
+  coupon  Coupon?     @relation(fields: [couponId], references: [id])
+  items   OrderItem[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id               String  @id @default(uuid())
+  orderId          String  @map("order_id")
+  productId        String  @map("product_id")
+  productName      String  @map("product_name")        // Lưu tên SP tại thời điểm mua
+  productThumbnail String? @map("product_thumbnail")   // Lưu ảnh SP
+  quantity         Int
+  unitPrice        Decimal @map("unit_price") @db.Decimal(12, 2)  // Đơn giá tại thời điểm mua
+  totalPrice       Decimal @map("total_price") @db.Decimal(12, 2) // Thành tiền
+  note             String?                              // Ghi chú sản phẩm
+
+  // Relations
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+// =============================================
+// COUPON / DISCOUNT
+// =============================================
+
+model Coupon {
+  id             String     @id @default(uuid())
+  code           String     @unique                       // Mã giảm giá
+  name           String                                   // Tên chương trình
+  description    String?    @db.Text
+  type           CouponType                               // PERCENT, FIXED_AMOUNT
+  value          Decimal    @db.Decimal(12, 2)            // Giá trị (% hoặc số tiền)
+  maxDiscount    Decimal?   @map("max_discount") @db.Decimal(12, 2)  // Giảm tối đa (nếu %)
+  minOrderAmount Decimal?   @map("min_order_amount") @db.Decimal(12, 2) // Đơn hàng tối thiểu
+  usageLimit     Int?       @map("usage_limit")           // Giới hạn sử dụng
+  usedCount      Int        @default(0) @map("used_count") // Đã sử dụng
+  validFrom      DateTime   @map("valid_from")
+  validTo        DateTime   @map("valid_to")
+  isActive       Boolean    @default(true) @map("is_active")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  orders Order[]
+
+  @@map("coupons")
+}
+
+// =============================================
+// CHAT / MESSAGING
+// =============================================
+
+model Conversation {
+  id            String             @id @default(uuid())
+  customerId    String             @map("customer_id")      // Khách hàng
+  adminId       String?            @map("admin_id")         // Admin phụ trách (nullable)
+  title         String?                                     // Tiêu đề cuộc hội thoại
+  status        ConversationStatus @default(OPEN)
+  lastMessageAt DateTime?          @map("last_message_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  // Relations
+  customer User      @relation("CustomerConversations", fields: [customerId], references: [id], onDelete: Cascade)
+  admin    User?     @relation("AdminConversations", fields: [adminId], references: [id])
+  messages Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  senderId       String   @map("sender_id")              // Người gửi
+  content        String?  @db.Text                       // Nội dung tin nhắn
+  imageUrl       String?  @map("image_url")              // Ảnh đính kèm
+  isRead         Boolean  @default(false) @map("is_read")
+  readAt         DateTime? @map("read_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  // Relations
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("SentMessages", fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+// =============================================
+// CONTENT MANAGEMENT
+// =============================================
+
+model News {
+  id           String    @id @default(uuid())
+  title        String
+  slug         String    @unique
+  summary      String?   @db.Text                       // Tóm tắt
+  content      String    @db.Text                       // Nội dung HTML
+  thumbnailUrl String?   @map("thumbnail_url")
+  type         NewsType  @default(NEWS)
+  isPublished  Boolean   @default(false) @map("is_published")
+  viewCount    Int       @default(0) @map("view_count")
+  authorId     String    @map("author_id")
+  publishedAt  DateTime? @map("published_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  author User @relation("NewsAuthor", fields: [authorId], references: [id])
+
+  @@map("news")
+}
+
+model Banner {
+  id        String         @id @default(uuid())
+  title     String
+  imageUrl  String         @map("image_url")
+  linkUrl   String?        @map("link_url")            // Link khi click
+  position  BannerPosition @default(HOME_HERO)
+  sortOrder Int            @default(0) @map("sort_order")
+  isActive  Boolean        @default(true) @map("is_active")
+  startDate DateTime?      @map("start_date")
+  endDate   DateTime?      @map("end_date")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  @@map("banners")
+}
+
+model CompanyInfo {
+  id        String   @id @default(uuid())
+  key       String   @unique                            // about_us, vision, mission, history...
+  valueVi   String   @map("value_vi") @db.Text          // Nội dung tiếng Việt
+  valueEn   String?  @map("value_en") @db.Text          // Nội dung tiếng Anh (optional)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("company_info")
+}
+
+model Contact {
+  id        String        @id @default(uuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String        @db.Text
+  status    ContactStatus @default(NEW)
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  @@map("contacts")
+}
+
+// =============================================
+// SYSTEM
+// =============================================
+
+model Setting {
+  id          String   @id @default(uuid())
+  key         String   @unique                          // site_name, hotline, email, address...
+  value       String   @db.Text
+  description String?
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String                                     // CREATE, UPDATE, DELETE, APPROVE, REJECT
+  entityType String   @map("entity_type")               // USER, ORDER, PRODUCT...
+  entityId   String   @map("entity_id")
+  oldValue   Json?    @map("old_value")                 // Giá trị cũ
+  newValue   Json?    @map("new_value")                 // Giá trị mới
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
