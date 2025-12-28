@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma';
 import { FilesModule } from './modules/files';
 import { AuthModule } from './modules/auth';
+import { ProductsModule } from './modules/products';
 import {
   appConfig,
   databaseConfig,
@@ -23,6 +24,7 @@ import {
     PrismaModule,
     FilesModule,
     AuthModule,
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
