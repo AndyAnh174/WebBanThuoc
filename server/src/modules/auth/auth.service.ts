@@ -3,9 +3,13 @@ import {
     ConflictException,
     InternalServerErrorException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma';
 import { FilesService } from '../files';
 import { RegisterCustomerDto } from './dto';
+
+// Số vòng lặp để hash password (cao hơn = an toàn hơn nhưng chậm hơn)
+const SALT_ROUNDS = 10;
 
 @Injectable()
 export class AuthService {
@@ -15,9 +19,27 @@ export class AuthService {
     ) { }
 
     /**
+     * Hash password với bcrypt
+     */
+    private async hashPassword(password: string): Promise<string> {
+        return bcrypt.hash(password, SALT_ROUNDS);
+    }
+
+    /**
+     * So sánh password với hash
+     */
+    async comparePassword(
+        password: string,
+        hashedPassword: string,
+    ): Promise<boolean> {
+        return bcrypt.compare(password, hashedPassword);
+    }
+
+    /**
      * Đăng ký Customer mới
      * - Kiểm tra email/phone đã tồn tại chưa
      * - Upload file giấy phép kinh doanh (nếu có)
+     * - Hash password với bcrypt
      * - Lưu user vào DB với status = PENDING
      */
     async registerCustomer(
@@ -76,14 +98,16 @@ export class AuthService {
             }
         }
 
+        // Hash password với bcrypt
+        const passwordHash = await this.hashPassword(registerDto.password);
+
         // Tạo user mới với status = PENDING
-        // TODO: Hash password sẽ implement ở commit 3
         try {
             const user = await this.prisma.user.create({
                 data: {
                     email: registerDto.email,
                     phone: registerDto.phone,
-                    passwordHash: registerDto.password, // TODO: Hash password
+                    passwordHash, // Password đã được hash với bcrypt
                     fullName: registerDto.fullName,
                     dateOfBirth: registerDto.dateOfBirth
                         ? new Date(registerDto.dateOfBirth)
