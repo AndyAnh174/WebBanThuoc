@@ -10,6 +10,7 @@ import {
   databaseConfig,
   minioConfig,
   redisConfig,
+  jwtConfig,
 } from './config';
 
 @Module({
@@ -17,7 +18,7 @@ import {
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
-      load: [appConfig, databaseConfig, minioConfig, redisConfig],
+      load: [appConfig, databaseConfig, minioConfig, redisConfig, jwtConfig],
     }),
     PrismaModule,
     FilesModule,
