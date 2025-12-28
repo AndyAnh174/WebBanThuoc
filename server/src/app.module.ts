@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma';
 import { FilesModule } from './modules/files';
+import { AuthModule } from './modules/auth';
 import {
   appConfig,
   databaseConfig,
@@ -20,8 +21,9 @@ import {
     }),
     PrismaModule,
     FilesModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }
